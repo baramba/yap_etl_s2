@@ -86,7 +86,7 @@ class State:
     Класс для хранения текущего состояния.
     """
 
-    def __init__(self, storage: BaseStorage):
+    def __init__(self, storage: BaseStorage) -> None:
         self.storage = storage
         self.data = self.storage.retrieve_state()
         self.start_sync: str

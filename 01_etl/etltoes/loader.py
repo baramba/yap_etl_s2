@@ -23,11 +23,12 @@ class Loader(object):
         self.fetch_size = fetch_size
         self.movies_sql: str = ""
         self.table: str = ""
+        movies: list[Movie] = []
 
     def updated_ids(self, table: str) -> "Iterator[tuple[str]]":
         """Генерирует последовательность списков идентификаторов, обновленных с последней синхронизации."""
         last_sync = self.state.get_state(table)
-        sql = "select id from content.{} where modified >= '{}'".format(table, last_sync)
+        sql = "select id from content.{t} where modified >= '{l}'".format(t=table, l=last_sync)
         cur = self.conn.cursor()
         cur.execute(sql)
         while True:
@@ -42,9 +43,9 @@ class Loader(object):
         """Получить список обновленных фильмов."""
 
         cur = self.conn.cursor()
+
         for uuids in self.updated_ids(self.table):
             sql: bytes = cur.mogrify(self.movies_sql, (uuids,))
-            # logging.debug(sql.decode("UTF-8"))
             cur.execute(sql)
             while True:
                 movies: list[Movie] = []
@@ -79,10 +80,10 @@ class PersonLoader(Loader):
             where pfw."role" = 'writer') as "writers"
         from
             "content".person p
-        left join "content".person_film_work pfw on pfw.person_id = p.id
-        left join "content".film_work fw on fw.id = pfw.film_work_id
-        left join "content".genre_film_work gfw on gfw.film_work_id = fw.id
-        left join "content".genre g on g.id = gfw.genre_id
+        left outer join "content".person_film_work pfw on pfw.person_id = p.id
+        left outer join "content".film_work fw on fw.id = pfw.film_work_id
+        left outer join "content".genre_film_work gfw on gfw.film_work_id = fw.id
+        left outer join "content".genre g on g.id = gfw.genre_id
             where
                 p.id in %s
             group by fw.id

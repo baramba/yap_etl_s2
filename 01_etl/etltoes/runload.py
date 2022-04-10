@@ -2,8 +2,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
-from itertools import count
+from itertools import chain
 from typing import Iterator
 
 import psycopg2
@@ -13,12 +12,19 @@ from psycopg2 import OperationalError
 from psycopg2.extensions import connection as _conn
 from psycopg2.extras import DictCursor
 
-from etltoes.loader import FilmworkLoader, GenreLoader, PersonLoader, Tables
+from etltoes.loader import FilmworkLoader, GenreLoader, Loader, PersonLoader, Tables
 from etltoes.saver import Saver
 from etltoes.state import JsonFileStorage, State
 
 
-def backoff(exception, retry=3, start_sleep_time=0.1, factor=2, border_sleep_time=10, message={"error": "Ошибка."}):
+def backoff(
+    exception,
+    retry: int = 3,
+    start_sleep_time: float = 0.1,
+    factor: int = 2,
+    border_sleep_time: int = 10,
+    message: dict = {"error": "Ошибка."},
+):
     """
     Функция для повторного выполнения функции через некоторое время, если возникла ошибка. Использует наивный экспоненциальный рост времени повтора (factor) до граничного времени ожидания (border_sleep_time)
 
@@ -32,10 +38,10 @@ def backoff(exception, retry=3, start_sleep_time=0.1, factor=2, border_sleep_tim
     """
     count = 0
 
-    def exp() -> Iterator:
+    def exp() -> Iterator[float]:
         nonlocal count
         while True:
-            t = start_sleep_time * 2**count
+            t = start_sleep_time * factor**count
             if t < border_sleep_time:
                 count += 1
                 yield t
@@ -87,13 +93,13 @@ def conn_es(url: str) -> Iterator[Elasticsearch]:
     message = {"error": "Произошла ошибка подключения к ES. Пробуем подключиться еще раз."}
 
     @backoff(ConnectionError, retry=200, message=message)
-    def connect(dsl) -> Elasticsearch:
+    def connect() -> Elasticsearch:
         conn = Elasticsearch(url)
         if not conn.ping(error_trace=False):
             raise ConnectionError("Не удается подключиться к ES")
         return conn
 
-    conn = connect(url)
+    conn = connect()
     yield conn
 
 
@@ -103,7 +109,7 @@ if __name__ == "__main__":
     es_logger = logging.getLogger("elasticsearch")
     es_logger.setLevel(level=logging.WARNING)
 
-    logging.basicConfig(format=log_format, level=logging.WARNING, filename="etltoes.log", filemode="w")
+    logging.basicConfig(format=log_format, level=logging.INFO, filename="etltoes.log", filemode="w")
 
     load_dotenv()
 
@@ -114,29 +120,28 @@ if __name__ == "__main__":
         "host": os.environ.get("DB_HOST", "127.0.0.1"),
         "port": os.environ.get("DB_PORT", 5432),
     }
-    es_url = "http://127.0.0.1:9200"
+    es_url = os.environ.get("ES_URL", "http://127.0.0.1:9200")
 
     try:
-        with conn_postgres(dsl) as pg_conn:
-            with conn_es(es_url) as es_client:
-                state_storage = JsonFileStorage()
-                state = State(state_storage)
-                saver = Saver(es_client=es_client, state=state)
+        with conn_postgres(dsl) as pg_conn, conn_es(es_url) as es_client:
+            state_storage = JsonFileStorage()
+            state = State(state_storage)
+            saver = Saver(es_client=es_client)
 
-                person_loader = PersonLoader(pg_conn, state)
-                movies = person_loader.updated_movies()
-                saver.save_to_es(movies=movies)
-                state.set_state(Tables.person.value, state.start_sync)
+            genre_loader = GenreLoader(pg_conn, state)
+            filmwork_loader = FilmworkLoader(pg_conn, state)
+            person_loader = PersonLoader(pg_conn, state)
 
-                genre_loader = GenreLoader(pg_conn, state)
-                movies = genre_loader.updated_movies()
-                saver.save_to_es(movies=movies)
-                state.set_state(Tables.genre.value, state.start_sync)
+            movies = chain(
+                filmwork_loader.updated_movies(),
+                genre_loader.updated_movies(),
+                person_loader.updated_movies(),
+            )
+            saver.save_to_es(movies=movies)
+            state.set_state(Tables.person.value, state.start_sync)
+            state.set_state(Tables.genre.value, state.start_sync)
+            state.set_state(Tables.filmwork.value, state.start_sync)
 
-                filmwork_loader = FilmworkLoader(pg_conn, state)
-                movies = filmwork_loader.updated_movies()
-                saver.save_to_es(movies=movies)
-                state.set_state(Tables.filmwork.value, state.start_sync)
     except OperationalError as err:
         logging.error("Ошибка работы с БД\n {e}".format(e=err))
     except ConnectionError as err:

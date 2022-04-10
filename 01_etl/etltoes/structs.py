@@ -48,12 +48,8 @@ class Movie(BaseModel):
             name, id = str(actorid).split("^", 1)
             self.actors_id.append({"id": id, "name": name})
             self.actors_names.append(name)
-            # self.actors_names += " {n}".format(n=name)
-            # self.actors_names = self.actors_names.strip()
 
         for writerid in self.writers:
             name, id = str(writerid).split("^", 1)
             self.writers_id.append({"id": id, "name": name})
             self.writers_names.append(name)
-            # self.writers_names += " {n}".format(n=name)
-            # self.writers_names = self.writers_names.strip()
