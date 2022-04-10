@@ -12,7 +12,7 @@ from psycopg2 import OperationalError
 from psycopg2.extensions import connection as _conn
 from psycopg2.extras import DictCursor
 
-from etltoes.loader import FilmworkLoader, GenreLoader, Loader, PersonLoader, Tables
+from etltoes.loader import FilmworkLoader, GenreLoader, PersonLoader, Tables
 from etltoes.saver import Saver
 from etltoes.state import JsonFileStorage, State
 

@@ -5,8 +5,9 @@ from enum import Enum
 from typing import Iterator
 
 from psycopg2.extensions import connection as _conn
-from state import State
-from structs import Movie
+
+from etltoes.state import State
+from etltoes.structs import Movie
 
 
 class Tables(Enum):
