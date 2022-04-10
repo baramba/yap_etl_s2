@@ -1,5 +1,6 @@
 """ Загрузка данных из Postgres пачками(размер = fetch_size)"""
 import logging
+from datetime import datetime
 from enum import Enum
 from typing import Iterator
 
@@ -27,7 +28,7 @@ class Loader(object):
 
     def updated_ids(self, table: str) -> "Iterator[tuple[str]]":
         """Генерирует последовательность списков идентификаторов, обновленных с последней синхронизации."""
-        last_sync = self.state.get_state(table)
+        last_sync = self.state.get_state(table) or datetime(1900, 1, 1, 1, 1, 1, 0)
         sql = "select id from content.{t} where modified >= '{l}'".format(t=table, l=last_sync)
         cur = self.conn.cursor()
         cur.execute(sql)
